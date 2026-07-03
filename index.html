@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ビーチクリーンマップ｜沖縄</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root{
+    --ocean:#0c7a8c;        /* メイン：海のティール */
+    --ocean-deep:#085463;
+    --sand:#e8dcc0;
+    --coral:#e8694a;
+    --ink:#143038;
+    --paper:#ffffff;
+    --line:#d7e2e4;
+    --fresh:#1f9d57;        /* 緑：最近やった */
+    --mid:#e0a000;          /* 黄：そろそろ */
+    --old:#d23b2e;          /* 赤：長くやっていない＝次の候補 */
+    --never:#8a99a0;        /* 灰：未実施 */
+    --plan:#7b4fd1;         /* 紫：予定 */
+    --shadow:0 6px 24px rgba(8,40,48,.18);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;font-family:"Hiragino Kaku Gothic ProN","Meiryo",system-ui,sans-serif;color:var(--ink);background:#eef4f4}
+  #map{position:absolute;inset:0;z-index:1}
+
+  /* ヘッダー */
+  .topbar{
+    position:absolute;top:0;left:0;right:0;z-index:1000;
+    background:linear-gradient(180deg,var(--ocean) 0%,var(--ocean-deep) 100%);
+    color:#fff;padding:10px 14px;display:flex;align-items:center;gap:10px;
+    box-shadow:0 2px 10px rgba(8,40,48,.25)
+  }
+  .topbar h1{font-size:16px;margin:0;font-weight:700;letter-spacing:.02em}
+  .topbar .sub{font-size:11px;opacity:.85;margin-left:auto;white-space:nowrap}
+
+  /* 凡例 */
+  .legend{
+    position:absolute;top:52px;left:10px;z-index:900;
+    background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:12px;
+    padding:8px 10px;font-size:11px;line-height:1.7;box-shadow:var(--shadow);max-width:182px
+  }
+  .legend b{font-size:11px}
+  .legend .row{display:flex;align-items:center;gap:6px}
+  .dot{width:12px;height:12px;border-radius:50%;flex:none;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.15)}
+  .legend .note{color:#557;margin-top:4px;font-size:10px;line-height:1.5}
+  .legend .toggle{position:absolute;top:6px;right:8px;font-size:10px;color:var(--ocean);cursor:pointer}
+
+  /* 現在地・追加ボタン */
+  .fab{
+    position:absolute;right:12px;z-index:900;width:48px;height:48px;border-radius:50%;
+    background:#fff;border:1px solid var(--line);box-shadow:var(--shadow);
+    display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer
+  }
+  #fab-locate{bottom:96px}
+  #fab-add{bottom:154px;font-size:24px;background:var(--ocean);color:#fff;border-color:var(--ocean-deep)}
+
+  /* 地図上の指示バー */
+  .hintbar{
+    position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:950;
+    background:var(--ocean-deep);color:#fff;padding:9px 16px;border-radius:22px;
+    font-size:13px;box-shadow:var(--shadow);display:none;max-width:90vw;text-align:center
+  }
+  .hintbar.show{display:block}
+  .hintbar b{color:#ffe08a}
+
+  /* ピン */
+  .pinwrap{position:relative;width:26px;height:34px}
+  .pinwrap .pin{position:absolute;left:0;top:4px}
+  .pin{
+    width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
+    border:2.5px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.35);position:relative
+  }
+  .pin span{transform:rotate(45deg);position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;font-weight:700}
+  .planflag{position:absolute;top:-2px;right:-3px;width:13px;height:13px;background:var(--plan);border:2px solid #fff;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.3);z-index:5}
+  .subdot{width:11px;height:11px;border-radius:50%;background:var(--coral);border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+  .tempdot{width:18px;height:18px;border-radius:50%;background:rgba(232,105,74,.25);border:2px dashed var(--coral)}
+  .loc-icon{width:16px;height:16px;border-radius:50%;background:#2b7be3;border:3px solid #fff;box-shadow:0 0 0 2px rgba(43,123,227,.4)}
+  .leaflet-control-attribution img{display:none}
+
+  /* パネル（下からスライド） */
+  .panel{
+    position:absolute;left:0;right:0;bottom:0;z-index:1100;
+    background:var(--paper);border-radius:18px 18px 0 0;box-shadow:0 -8px 30px rgba(8,40,48,.22);
+    max-height:82vh;overflow-y:auto;transform:translateY(110%);transition:transform .28s ease;
+    padding:0 0 24px
+  }
+  .panel.open{transform:translateY(0)}
+  .grip{width:42px;height:4px;background:#cdd9db;border-radius:99px;margin:9px auto 4px}
+  .panel-head{padding:4px 18px 12px;border-bottom:1px solid var(--line);position:sticky;top:0;background:#fff;z-index:2}
+  .panel-head .ttl{display:flex;align-items:center;gap:8px}
+  .panel-head h2{font-size:18px;margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .panel-head .meta{font-size:12px;color:#5a7178;margin-top:5px}
+  .iconbtn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:5px 9px;font-size:12px;cursor:pointer;white-space:nowrap}
+  .iconbtn.danger{color:var(--old);border-color:#f0c2bd}
+  .closebtn{position:absolute;top:8px;right:12px;font-size:22px;color:#9aa;cursor:pointer;line-height:1}
+
+  .panel-body{padding:14px 18px}
+  .section-ttl{font-size:13px;font-weight:700;color:var(--ocean-deep);margin:18px 0 8px;display:flex;align-items:center;gap:6px}
+
+  /* 履歴 */
+  .ev{border:1px solid var(--line);border-radius:12px;padding:11px 12px;margin-bottom:10px;background:#fbfdfd}
+  .ev.planned{border-color:#d9cdf2;background:#f7f4fd}
+  .ev .ev-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .ev .badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px;color:#fff;background:var(--ocean)}
+  .ev .badge.plan{background:var(--plan)}
+  .ev .date{font-weight:700;font-size:14px}
+  .ev .org{font-size:13px;color:#33525a}
+  .ev .facts{font-size:12px;color:#445;margin-top:6px;line-height:1.7}
+  .ev .facts .chip{display:inline-block;background:#eef4f4;border-radius:6px;padding:1px 7px;margin:2px 4px 2px 0}
+  .ev .facts .chip.warn{background:#fce9e6;color:var(--old)}
+  .ev .notes{font-size:12px;color:#33414a;margin-top:6px;white-space:pre-wrap;background:#fff;border-radius:8px;padding:7px 9px;border:1px dashed var(--line)}
+  .ev img.thumb{margin-top:8px;width:100%;max-height:170px;object-fit:cover;border-radius:8px}
+  .ev .ev-actions{margin-top:8px;display:flex;gap:8px}
+  .ev .ev-actions button{font-size:11px;padding:4px 8px;border:1px solid var(--line);background:#fff;border-radius:7px;cursor:pointer;color:#557}
+  .empty{font-size:13px;color:#7a8a90;text-align:center;padding:18px 0}
+
+  /* ボタン群 */
+  .actrow{display:flex;gap:10px;margin-top:6px}
+  .btn{flex:1;border:none;border-radius:11px;padding:13px;font-size:14px;font-weight:700;cursor:pointer}
+  .btn.primary{background:var(--ocean);color:#fff}
+  .btn.plan{background:var(--plan);color:#fff}
+  .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--ink)}
+
+  /* フォーム */
+  .form label{display:block;font-size:12px;font-weight:700;color:#3a565d;margin:14px 0 5px}
+  .form input[type=text],.form input[type=number],.form input[type=date],.form textarea,.form select{
+    width:100%;border:1px solid var(--line);border-radius:10px;padding:11px;font-size:15px;font-family:inherit;background:#fbfdfd
+  }
+  .form textarea{min-height:62px;resize:vertical}
+  /* 日付欄：ブラウザ標準の表示を隠し、曜日付きで上書き表示 */
+  .datewrap{position:relative}
+  .datewrap input[type=date]{color:transparent}
+  .datewrap input[type=date]::-webkit-datetime-edit{color:transparent}
+  .dateface{position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:15px;color:var(--ink);pointer-events:none}
+  .seg{display:flex;gap:6px;flex-wrap:wrap}
+  .seg button{flex:1;min-width:64px;border:1px solid var(--line);background:#fff;border-radius:9px;padding:9px 4px;font-size:13px;cursor:pointer}
+  .seg button.on{background:var(--ocean);color:#fff;border-color:var(--ocean-deep)}
+  .checks{display:flex;flex-wrap:wrap;gap:7px}
+  .checks label{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:9px;padding:7px 10px;font-size:12.5px;font-weight:500;margin:0;cursor:pointer;background:#fff}
+  .checks label.on{background:#e7f3f2;border-color:var(--ocean)}
+  .checks input{display:none}
+  .pickbtn{width:100%;border:1.5px dashed var(--coral);background:#fff7f4;color:var(--coral);border-radius:10px;padding:11px;font-size:13px;font-weight:700;cursor:pointer}
+  .pickbtn.done{border-style:solid;background:#fdeee9}
+  .small{font-size:11px;color:#7a8a90;margin-top:4px}
+
+  /* ニックネームモーダル */
+  .modal{position:fixed;inset:0;z-index:2000;background:rgba(8,30,36,.55);display:none;align-items:center;justify-content:center;padding:24px}
+  .modal.show{display:flex}
+  .modal .box{background:#fff;border-radius:16px;padding:22px;max-width:340px;width:100%;box-shadow:var(--shadow)}
+  .modal h3{margin:0 0 6px;font-size:17px}
+  .modal p{margin:0 0 14px;font-size:13px;color:#557}
+
+  .toast{
+    position:fixed;left:50%;bottom:30px;transform:translateX(-50%) translateY(20px);z-index:3000;
+    background:var(--ink);color:#fff;padding:11px 20px;border-radius:24px;font-size:13px;opacity:0;
+    transition:.3s;pointer-events:none
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>🏝 ビーチクリーンマップ <span style="font-size:10px;opacity:.7;font-weight:400">v1.5</span></h1>
+  <span class="sub" id="counter">沖縄</span>
+</div>
+
+<div class="legend" id="legend">
+  <span class="toggle" id="legendToggle">隠す</span>
+  <b>ピンの色＝最後の実施から</b>
+  <div class="row"><span class="dot" style="background:var(--fresh)"></span>3か月以内</div>
+  <div class="row"><span class="dot" style="background:var(--mid)"></span>3〜6か月</div>
+  <div class="row"><span class="dot" style="background:var(--old)"></span>6か月超＝次の候補</div>
+  <div class="row"><span class="dot" style="background:var(--never)"></span>未実施</div>
+  <div class="row"><span class="dot" style="background:var(--plan)"></span>予定あり（右上に印）</div>
+  <div class="note">色が濃い海岸ほど、そろそろやり時です。</div>
+</div>
+
+<div id="map"></div>
+
+<div class="fab" id="fab-add" title="海岸を追加">＋</div>
+<div class="fab" id="fab-locate" title="現在地">📍</div>
+<div class="hintbar" id="hintbar"></div>
+
+<!-- パネル -->
+<div class="panel" id="panel">
+  <div class="grip"></div>
+  <span class="closebtn" id="panelClose">×</span>
+  <div class="panel-head">
+    <div class="ttl">
+      <h2 id="p-name">海岸名</h2>
+    </div>
+    <div class="meta" id="p-meta"></div>
+    <div style="margin-top:8px;display:flex;gap:7px;flex-wrap:wrap">
+      <button class="iconbtn" id="p-rename">✏️ 名称変更</button>
+      <button class="iconbtn danger" id="p-delbeach">🗑 海岸を削除</button>
+    </div>
+  </div>
+  <div class="panel-body" id="panelBody"><!-- 動的 --></div>
+</div>
+
+<!-- ニックネーム -->
+<div class="modal" id="nickModal">
+  <div class="box">
+    <h3>はじめての設定</h3>
+    <p>記録した人がわかるようにします（端末に保存。あとで変更可）。</p>
+    <input type="text" id="nickInput" placeholder="ニックネーム 例：なごっち、A" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:11px;font-size:15px">
+    <input type="text" id="keyInput" value="0000" placeholder="あいことば" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:11px;font-size:15px;margin-top:10px">
+    <p style="margin:8px 0 0;font-size:11px;color:#7a8a90">あいことば：0000のままなら誰でも記録を直せます。団体で記録を守りたいときだけ変えてください（メンバーで共有）。</p>
+    <div class="actrow"><button class="btn primary" id="nickSave">はじめる</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ===== データ ===== */
+const LS_NICK="bc_nick_v1", LS_KEY="bc_key_v1";
+
+/* ===== 接続設定：GASのデプロイURL ===== */
+const GAS_URL="https://script.google.com/macros/s/AKfycbynvalMo5iW68o4fjuDodmBnNjVDkcHFpUpUYHguw019icJ9NV6iknLwS869xSxW0Ch/exec";
+
+let beaches=[], events=[];
+let nick = localStorage.getItem(LS_NICK) || "";
+let myKey = localStorage.getItem(LS_KEY) || "0000";
+
+const TRASH=["漂着ゴミ（外国由来）","ペットボトル・容器","漁具・浮き","流木・自然物","生活ゴミ"];
+
+/* GASへ保存（楽観的更新：画面は即反映、裏で送信） */
+function post(payload){
+  return fetch(GAS_URL,{method:"POST",body:JSON.stringify({...payload, nick, device:device()})})
+    .then(r=>r.json())
+    .then(j=>{
+      if(j && !j.ok){
+        if(j.error==="auth"){ toast("あいことばが一致しません。保存されていません"); loadData(); }
+        else if(j.error==="beach_has_locked"){ toast("他の団体の記録がある海岸は削除できません"); loadData(); }
+        else toast("サーバー保存に失敗しました");
+      }
+      return j;
+    })
+    .catch(()=>{toast("通信エラー：保存できていない可能性があります");return null});
+}
+function loadData(){
+  fetch(GAS_URL+"?action=list")
+    .then(r=>r.json())
+    .then(j=>{
+      beaches=j.beaches||[];
+      events=(j.events||[]).map(normEvent);
+      renderBeaches();
+      if(current){ const b=beaches.find(x=>x.id===current.id); if(b) openBeach(b); else document.getElementById("panel").classList.remove("open"); }
+    })
+    .catch(()=>{ document.getElementById("counter").textContent="読込失敗"; toast("データ取得失敗。通信を確認してください"); });
+}
+function normEvent(e){
+  if(typeof e.segs==="string"){ if(e.segs){try{e.segs=JSON.parse(e.segs)}catch(_){e.segs=null}} else e.segs=null; }
+  if(typeof e.trash==="string"){ e.trash=e.trash?e.trash.split("｜"):[]; }
+  e.danger = e.danger===true||e.danger==="TRUE"||e.danger==="true";
+  e.car = e.car===true||e.car==="TRUE"||e.car==="true";
+  e.locked = e.locked===true||e.locked==="TRUE"||e.locked==="true";
+  return e;
+}
+function uid(){return "e"+Date.now()+Math.floor(Math.random()*1000)}
+function todayStr(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+function device(){const u=navigator.userAgent;if(/iPhone|iPad/.test(u))return"iPhone";if(/Android/.test(u))return"Android";if(/Win/.test(u))return"Windows";if(/Mac/.test(u))return"Mac";return"その他"}
+
+/* ===== 地図 ===== */
+const map=L.map("map",{zoomControl:false}).setView([26.59,127.95],11);
+L.control.zoom({position:"topright"}).addTo(map);
+
+/* ベースレイヤ（他アプリと同構成：既定は航空写真） */
+const gsiPhoto=L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg",
+  {maxNativeZoom:18,maxZoom:19,attribution:"© 国土地理院"});
+const cartoLabels=L.tileLayer("https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png",
+  {maxZoom:19,attribution:"© CARTO"});
+const layerAerial=L.layerGroup([gsiPhoto,cartoLabels]);
+const layerOsm=L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  {maxZoom:19,attribution:"© OpenStreetMap"});
+layerAerial.addTo(map);
+L.control.layers({"航空写真":layerAerial,"地図":layerOsm},null,{position:"topright"}).addTo(map);
+
+let markers={};      // beachId -> marker
+let subLayer=L.layerGroup().addTo(map);  // 表示中の海岸の実施区間（線）
+let tempLayer=L.layerGroup().addTo(map); // 描画中の仮の線・点
+let locMarker=null;
+let mode="browse";   // browse | addBeach | drawSeg
+let current=null;    // 表示中の beach
+let pendingSegs=[];  // 描画中の区間 [[ [lat,lng],[lat,lng] ], ...]
+let segDraft=null;   // 線の始点 [lat,lng]
+
+function recencyColor(beachId){
+  const done=events.filter(e=>e.beachId===beachId && e.status==="done");
+  if(!done.length) return {c:"var(--never)",label:"未実施"};
+  const last=done.reduce((a,b)=>a.date>b.date?a:b).date;
+  const days=(new Date(todayStr())-new Date(last))/86400000;
+  if(days<=90) return {c:"var(--fresh)",label:"3か月以内"};
+  if(days<=180) return {c:"var(--mid)",label:"3〜6か月"};
+  return {c:"var(--old)",label:"6か月超"};
+}
+function hasPlan(beachId){return events.some(e=>e.beachId===beachId && e.status==="planned")}
+function isExpired(e){return e.status==="planned" && e.date<todayStr()}
+
+function beachIcon(beachId){
+  const r=recencyColor(beachId);
+  const plan=hasPlan(beachId);
+  return L.divIcon({className:"",iconSize:[26,34],iconAnchor:[13,32],popupAnchor:[0,-30],
+    html:`<div class="pinwrap"><div class="pin" style="background:${r.c}"><span></span></div>${plan?'<div class="planflag"></div>':''}</div>`});
+}
+function renderBeaches(){
+  Object.values(markers).forEach(m=>map.removeLayer(m));
+  markers={};
+  beaches.forEach(b=>{
+    const m=L.marker([b.lat,b.lng],{icon:beachIcon(b.id)}).addTo(map);
+    m.on("click",()=>{if(mode==="drawSeg")return; openBeach(b);});
+    markers[b.id]=m;
+  });
+  document.getElementById("counter").textContent="海岸 "+beaches.length+"件";
+}
+
+/* ===== パネル：海岸を開く ===== */
+function openBeach(b){
+  current=b; mode="browse"; clearTemp(); pendingSegs=[]; segDraft=null; hideHint();
+  document.getElementById("p-name").textContent=b.name;
+  const done=events.filter(e=>e.beachId===b.id && e.status==="done");
+  const last=done.length?done.reduce((a,b)=>a.date>b.date?a:b).date:null;
+  const r=recencyColor(b.id);
+  document.getElementById("p-meta").innerHTML=
+    `<span class="dot" style="display:inline-block;background:${r.c}"></span> ${r.label}`+
+    ` ・ 実施 ${done.length}回`+(last?` ・ 最終 ${fmtDate(last)}`:"");
+  drawMarks(b.id);
+  renderHistory(b.id);
+  document.getElementById("panel").classList.add("open");
+  map.panTo([b.lat,b.lng]);
+}
+function drawMarks(beachId){
+  subLayer.clearLayers();
+  events.filter(e=>e.beachId===beachId).forEach(e=>{
+    const plan=e.status==="planned";
+    (e.segs||[]).forEach(sg=>{
+      L.polyline(sg,{color: plan?"#7b4fd1":"#e8694a", weight:5, opacity:.85, dashArray: plan?"6 6":null}).addTo(subLayer);
+    });
+    if(e.subLat){ // 旧データ（点）との互換
+      L.marker([e.subLat,e.subLng],{icon:L.divIcon({className:"",iconSize:[11,11],iconAnchor:[6,6],html:'<div class="subdot"></div>'})}).addTo(subLayer);
+    }
+  });
+}
+function fmtDate(s){const d=new Date(s+"T12:00");const w="日月火水木金土"[d.getDay()];return `${d.getMonth()+1}/${d.getDate()}(${w})`}
+
+function renderHistory(beachId){
+  const body=document.getElementById("panelBody");
+  const planned=events.filter(e=>e.beachId===beachId && e.status==="planned").sort((a,b)=>a.date<b.date?-1:1);
+  const done=events.filter(e=>e.beachId===beachId && e.status==="done").sort((a,b)=>a.date>b.date?-1:1);
+
+  let html=`<div class="actrow">
+      <button class="btn primary" onclick="newRecord('done')">＋ 実施を記録</button>
+      <button class="btn plan" onclick="newRecord('planned')">📌 次回を予定</button>
+    </div>`;
+
+  if(planned.length){
+    html+=`<div class="section-ttl">📌 予定</div>`;
+    planned.forEach(e=>html+=evCard(e));
+  }
+  html+=`<div class="section-ttl">🧹 実施の履歴</div>`;
+  if(done.length){ done.forEach(e=>html+=evCard(e)); }
+  else html+=`<div class="empty">まだ記録がありません。<br>「＋ 実施を記録」から残しましょう。</div>`;
+
+  body.innerHTML=html;
+}
+function evCard(e){
+  const plan=e.status==="planned";
+  const expired=isExpired(e);
+  const nseg=(e.segs||[]).length;
+  let facts="";
+  if(e.area) facts+=`<span class="chip">📍 ${esc(e.area)}</span>`;
+  if(e.org) facts+=`<span class="chip">👥 ${esc(e.org)}</span>`;
+  if(e.people) facts+=`<span class="chip">${e.people}人</span>`;
+  if(e.bags) facts+=`<span class="chip">ゴミ ${e.bags}袋</span>`;
+  if(e.tide) facts+=`<span class="chip">🌊 ${esc(e.tide)}</span>`;
+  (e.trash||[]).forEach(t=>{facts+=`<span class="chip">${esc(t)}</span>`});
+  if(e.danger) facts+=`<span class="chip warn">⚠️ 危険物あり</span>`;
+  if(e.car) facts+=`<span class="chip">🚗 車で搬出可</span>`;
+  if(nseg) facts+=`<span class="chip">📏 区間 ${nseg}本</span>`;
+  if(e.locked) facts+=`<span class="chip">🔒 保護</span>`;
+  const seg0=nseg? e.segs[0][0] : (e.subLat?[e.subLat,e.subLng]:null);
+  return `<div class="ev ${plan?'planned':''}">
+    <div class="ev-top">
+      <span class="badge ${plan?'plan':''}" ${expired?'style="background:#c77400"':''}>${plan?(expired?'予定・期限切れ':'予定'):'実施'}</span>
+      <span class="date">${fmtDate(e.date)}</span>
+      ${e.org?`<span class="org">${esc(e.org)}</span>`:''}
+    </div>
+    ${expired?`<div class="facts" style="color:#c77400">予定日を過ぎています。実施したら「✔ 実施済みにする」を押してください。</div>`:''}
+    ${facts?`<div class="facts">${facts}</div>`:''}
+    ${e.notes?`<div class="notes">${esc(e.notes)}</div>`:''}
+    <div class="ev-actions">
+      ${plan?`<button style="color:#1f9d57;border-color:#bfe3cd;font-weight:700" onclick="event.stopPropagation();convertPlan('${e.id}')">✔ 実施済みにする</button>`:''}
+      <button onclick="event.stopPropagation();editEvent('${e.id}')">編集</button>
+      <button onclick="event.stopPropagation();delEvent('${e.id}')">削除</button>
+      ${seg0?`<button onclick="event.stopPropagation();map.panTo([${seg0[0]},${seg0[1]}]);">区間へ</button>`:''}
+    </div>
+  </div>`;
+}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+
+/* ===== 記録フォーム ===== */
+let editingId=null, formStatus="done", convertFromId=null;
+function newRecord(status){ editingId=null; convertFromId=null; pendingSegs=[]; segDraft=null; formStatus=status; buildForm(status,null); }
+function editEvent(id){ const e=events.find(x=>x.id===id); if(!e)return; editingId=id; convertFromId=null; pendingSegs=(e.segs||[]).map(sg=>sg.map(p=>[...p])); segDraft=null; formStatus=e.status; drawPendingPreview(); buildForm(e.status,e); }
+function convertPlan(id){
+  const p=events.find(x=>x.id===id); if(!p)return;
+  editingId=null; convertFromId=id; formStatus="done";
+  pendingSegs=(p.segs||[]).map(sg=>sg.map(pt=>[...pt])); segDraft=null;
+  drawPendingPreview();
+  buildForm("done",{date:todayStr(), area:p.area, org:p.org, notes:p.notes});
+  toast("予定の内容を引き継ぎました");
+}
+function buildForm(status, ev){
+  if(!current) return;
+  formStatus=status;
+  const isPlan = status==="planned";
+  const v=(k,d="")=> ev && ev[k]!=null ? ev[k] : d;
+
+  let trashChecks = TRASH.map(t=>{
+    const on=(ev&&ev.trash||[]).includes(t)?"on":"";
+    return `<label class="${on}" data-t="${t}"><input type="checkbox" ${on?'checked':''}>${t}</label>`;
+  }).join("");
+
+  document.getElementById("panelBody").innerHTML=`
+   <div class="form">
+    <div class="section-ttl">${isPlan?'📌 次回の予定':'🧹 実施を記録'}：${esc(current.name)}</div>
+
+    <label>日付</label>
+    <div class="datewrap">
+      <input type="date" id="f-date" value="${v('date',todayStr())}">
+      <span class="dateface" id="f-datew"></span>
+    </div>
+
+    <label>区間・どのへん</label>
+    <input type="text" id="f-area" placeholder="例：北側、川の河口付近、駐車場前" value="${esc(v('area'))}">
+
+    <label>やった区間を地図に描く（任意・複数本OK）</label>
+    <button class="pickbtn ${pendingSegs.length?'done':''}" id="f-pick">${pendingSegs.length?`✔ 区間 ${pendingSegs.length}本（続けて描く／やり直す）`:'📏 地図で区間を線で描く'}</button>
+    <div class="small">始点→終点の2タップで1本。左側・右側など何本でも引けます。</div>
+
+    <label>団体・主催</label>
+    <input type="text" id="f-org" placeholder="例：なご海岸クリーンの会、有志" value="${esc(v('org'))}">
+
+    ${isPlan?'':`
+    <label>参加人数</label>
+    <input type="number" id="f-people" min="0" placeholder="例：30" value="${v('people','')}">
+
+    <label>ゴミの量（袋数）</label>
+    <input type="number" id="f-bags" min="0" placeholder="例：45" value="${v('bags','')}">
+
+    <label>ゴミの種類</label>
+    <div class="checks" id="f-trash">${trashChecks}</div>
+
+    <label>潮・天候メモ</label>
+    <input type="text" id="f-tide" placeholder="例：大潮の後、晴れ" value="${esc(v('tide'))}">
+
+    <label>そのほか</label>
+    <div class="checks" id="f-flags">
+      <label class="${ev&&ev.danger?'on':''}" data-f="danger"><input type="checkbox" ${ev&&ev.danger?'checked':''}>⚠️ 危険物あり</label>
+      <label class="${ev&&ev.car?'on':''}" data-f="car"><input type="checkbox" ${ev&&ev.car?'checked':''}>🚗 車で搬出可</label>
+    </div>
+    <div class="small">危険物（注射器・油・大型漂着物など）の中身はメモに書いてください。</div>
+    `}
+
+    <label>メモ・申し送り</label>
+    <textarea id="f-notes" placeholder="${isPlan?'次回ここをやる理由、装備など':'気づいたこと、次回への申し送り'}">${esc(v('notes'))}</textarea>
+
+    <label>記録者（ニックネーム）</label>
+    <input type="text" id="f-nick" value="${esc(nick)}" placeholder="例：なごっち、A">
+
+    <label>あいことば${ev&&ev.locked?'（この記録は保護されています）':''}</label>
+    <input type="text" id="f-key" value="${esc(ev ? (ev.locked ? myKey : "0000") : myKey)}" maxlength="20">
+    <div class="small">${ev&&ev.locked
+      ?'登録した団体のあいことばと一致しないと保存できません。'
+      :'0000のままなら誰でも直せます。変えるとこの記録に鍵がかかり、同じあいことばの人だけ編集・削除できます。'}</div>
+
+    <div class="actrow" style="margin-top:18px">
+      <button class="btn ghost" onclick="openBeach(current)">キャンセル</button>
+      <button class="btn ${isPlan?'plan':'primary'}" id="f-save">${editingId?'更新する':(isPlan?'予定を登録':'記録する')}</button>
+    </div>
+   </div>`;
+
+  // 種類チェック
+  document.querySelectorAll("#f-trash label, #f-flags label").forEach(l=>{
+    l.addEventListener("click",e=>{ const inp=l.querySelector("input"); setTimeout(()=>{l.classList.toggle("on",inp.checked)},0)});
+  });
+  // 日付を曜日付きで上書き表示（ブラウザ標準の()は隠す）
+  const dEl=document.getElementById("f-date"), wEl=document.getElementById("f-datew");
+  const updW=()=>{
+    if(!dEl.value){wEl.textContent="日付を選択";return}
+    const [y,m,dd]=dEl.value.split("-").map(Number);
+    const w="日月火水木金土"[new Date(y,m-1,dd,12).getDay()];
+    wEl.textContent=`${y}/${m}/${dd}（${w}）`;
+  };
+  dEl.addEventListener("change",updW); updW();
+  // 区間描画
+  document.getElementById("f-pick").addEventListener("click",()=>startDrawSegs());
+
+  // 保存
+  document.getElementById("f-save").addEventListener("click",()=>{
+    const rec={
+      id: editingId||uid(),
+      beachId: current.id,
+      status,
+      date: document.getElementById("f-date").value || todayStr(),
+      area: val("f-area"),
+      org: val("f-org"),
+      notes: val("f-notes"),
+      segs: pendingSegs.length? pendingSegs.map(sg=>sg.map(p=>[...p])) : null,
+      nick: val("f-nick"),
+      device: device(),
+      updatedAt: new Date().toISOString()
+    };
+    if(!isPlan){
+      rec.people = numVal("f-people");
+      rec.bags = numVal("f-bags");
+      rec.tide = val("f-tide");
+      rec.trash = [...document.querySelectorAll("#f-trash label.on")].map(l=>l.dataset.t);
+      rec.danger = document.querySelector('#f-flags label[data-f="danger"]').classList.contains("on");
+      rec.car = document.querySelector('#f-flags label[data-f="car"]').classList.contains("on");
+    }
+    const isUpdate=!!editingId;
+    const key=(val("f-key")||"0000");
+    rec.locked = key!=="0000";
+    if(rec.nick){ nick=rec.nick; localStorage.setItem(LS_NICK,nick); }
+    myKey=key; localStorage.setItem(LS_KEY,myKey);
+    events = events.filter(e=>e.id!==rec.id);
+    if(convertFromId){ events = events.filter(e=>e.id!==convertFromId); } // 予定を消し込み
+    events.push(rec); 
+    post({action:"saveEvent", rec, key, removeId: convertFromId||null});
+    const wasConvert=!!convertFromId;
+    editingId=null; convertFromId=null; pendingSegs=[]; segDraft=null;
+    renderBeaches();
+    openBeach(current);
+    toast(wasConvert?"実施済みにしました":(isUpdate?"更新しました":(isPlan?"予定を登録しました":"記録しました")));
+  });
+}
+function val(id){const e=document.getElementById(id);return e?e.value.trim():""}
+function numVal(id){const e=document.getElementById(id);return e&&e.value?Number(e.value):null}
+
+/* ===== 区間の線描画 ===== */
+function startDrawSegs(){
+  mode="drawSeg"; segDraft=null;
+  document.getElementById("panel").classList.remove("open");
+  drawPendingPreview();
+  drawHint();
+}
+function drawHint(){
+  const n=pendingSegs.length;
+  let h = segDraft
+    ? '線の<b>終点をタップ</b>'
+    : (n? `区間 <b>${n}本</b>。続けて<b>始点をタップ</b>か、` : '線の<b>始点をタップ</b>');
+  if(!segDraft){
+    h += ` <button onclick="finishDraw()" style="margin-left:6px;border:none;border-radius:8px;padding:5px 12px;font-weight:700;background:#1f9d57;color:#fff">✔ 完了</button>`;
+    if(n) h += ` <button onclick="undoSeg()" style="border:none;border-radius:8px;padding:5px 10px;background:#fff;color:#c0392b">↩ 1本消す</button>`;
+  }
+  showHint(h);
+}
+function drawPendingPreview(){
+  tempLayer.clearLayers();
+  pendingSegs.forEach(sg=>L.polyline(sg,{color:"#e8694a",weight:5,opacity:.85}).addTo(tempLayer));
+  if(segDraft) L.marker(segDraft,{icon:L.divIcon({className:"",iconSize:[18,18],iconAnchor:[9,9],html:'<div class="tempdot"></div>'})}).addTo(tempLayer);
+}
+function finishDraw(){
+  mode="browse"; segDraft=null;
+  hideHint();
+  document.getElementById("panel").classList.add("open");
+  buildForm(formStatus, editingId?events.find(x=>x.id===editingId):null);
+}
+function undoSeg(){
+  pendingSegs.pop(); drawPendingPreview(); drawHint();
+}
+map.on("click",e=>{
+  if(mode==="drawSeg"){
+    const p=[+e.latlng.lat.toFixed(6),+e.latlng.lng.toFixed(6)];
+    if(!segDraft){ segDraft=p; }
+    else { pendingSegs.push([segDraft,p]); segDraft=null; }
+    drawPendingPreview(); drawHint();
+    return;
+  }
+  if(mode==="addBeach"){
+    const name=prompt("海岸の名前を入力してください");
+    if(name && name.trim()){
+      const b={id:"b"+Date.now(),name:name.trim(),lat:+e.latlng.lat.toFixed(6),lng:+e.latlng.lng.toFixed(6)};
+      beaches.push(b); post({action:"saveBeach", beach:b});
+      renderBeaches(); mode="browse"; hideHint();
+      openBeach(b); toast("海岸を追加しました");
+    } else { mode="browse"; hideHint(); }
+    return;
+  }
+});
+function delEvent(id){
+  const target=events.find(e=>e.id===id);
+  if(!confirm("この記録を削除しますか？")) return;
+  const run=(key)=>post({action:"deleteEvent", id, key}).then(j=>{
+    if(j && !j.ok && j.error==="auth"){
+      const k=prompt("あいことばが一致しません。この記録のあいことばを入力してください");
+      if(k && k.trim()){
+        post({action:"deleteEvent", id, key:k.trim()}).then(j2=>{
+          if(j2 && j2.ok){ myKey=k.trim(); localStorage.setItem(LS_KEY,myKey); toast("削除しました"); loadData(); }
+        });
+      }
+    }
+  });
+  // 楽観的更新（認証エラー時はloadData()で復元される）
+  events=events.filter(e=>e.id!==id); 
+  run(myKey);
+  renderBeaches(); openBeach(current); toast("削除しました");
+}
+
+/* ===== 海岸の追加・名称変更・削除 ===== */
+document.getElementById("fab-add").addEventListener("click",()=>{
+  mode="addBeach"; document.getElementById("panel").classList.remove("open");
+  showHint('追加したい海岸の位置を<b>地図でタップ</b>');
+});
+document.getElementById("p-rename").addEventListener("click",()=>{
+  const n=prompt("海岸名を変更",current.name);
+  if(n&&n.trim()){current.name=n.trim();post({action:"saveBeach",beach:current});openBeach(current);toast("変更しました")}
+});
+document.getElementById("p-delbeach").addEventListener("click",()=>{
+  const bid=current.id;
+  const has=events.some(e=>e.beachId===bid);
+  if(!confirm(has?"この海岸と全ての記録を削除しますか？":"この海岸を削除しますか？"))return;
+  beaches=beaches.filter(b=>b.id!==bid);
+  events=events.filter(e=>e.beachId!==bid);
+  
+  post({action:"deleteBeach", id:bid, key:myKey});
+  subLayer.clearLayers();
+  document.getElementById("panel").classList.remove("open");
+  renderBeaches();toast("削除しました");
+});
+document.getElementById("panelClose").addEventListener("click",()=>{
+  document.getElementById("panel").classList.remove("open");subLayer.clearLayers();clearTemp();mode="browse";hideHint();
+});
+
+/* ===== 現在地 ===== */
+function goLocate(){
+  if(!navigator.geolocation){toast("位置情報が使えません");return}
+  navigator.geolocation.getCurrentPosition(p=>{
+    const ll=[p.coords.latitude,p.coords.longitude];
+    if(locMarker)map.removeLayer(locMarker);
+    locMarker=L.marker(ll,{icon:L.divIcon({className:"",iconSize:[16,16],iconAnchor:[8,8],html:'<div class="loc-icon"></div>'})}).addTo(map);
+    map.setView(ll,13);
+  },()=>toast("現在地を取得できませんでした"),{enableHighAccuracy:true,timeout:8000});
+}
+document.getElementById("fab-locate").addEventListener("click",goLocate);
+
+/* ===== ユーティリティ ===== */
+function clearTemp(){tempLayer.clearLayers()}
+function showHint(h){const b=document.getElementById("hintbar");b.innerHTML=h;b.classList.add("show")}
+function hideHint(){document.getElementById("hintbar").classList.remove("show")}
+let toastT;
+function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove("show"),2000)}
+
+document.getElementById("legendToggle").addEventListener("click",()=>{
+  const l=document.getElementById("legend");const hidden=l.dataset.hidden==="1";
+  [...l.children].forEach(c=>{if(!c.classList.contains("toggle"))c.style.display=hidden?"":"none"});
+  document.getElementById("legendToggle").textContent=hidden?"隠す":"凡例";l.dataset.hidden=hidden?"0":"1";
+});
+
+/* ===== 起動 ===== */
+function init(){
+  if(!nick){ document.getElementById("nickModal").classList.add("show"); }
+  document.getElementById("counter").textContent="読み込み中…";
+  loadData();
+  goLocate();
+}
+document.getElementById("nickSave").addEventListener("click",()=>{
+  const v=document.getElementById("nickInput").value.trim();
+  if(v){nick=v;localStorage.setItem(LS_NICK,nick);}
+  const k=document.getElementById("keyInput").value.trim();
+  myKey=k||"0000"; localStorage.setItem(LS_KEY,myKey);
+  document.getElementById("nickModal").classList.remove("show");
+});
+init();
+</script>
+</body>
+</html>
