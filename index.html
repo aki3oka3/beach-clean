@@ -79,6 +79,8 @@
   .tempdot{width:18px;height:18px;border-radius:50%;background:rgba(232,105,74,.25);border:2px dashed var(--coral)}
   .loc-icon{width:16px;height:16px;border-radius:50%;background:#2b7be3;border:3px solid #fff;box-shadow:0 0 0 2px rgba(43,123,227,.4)}
   .leaflet-control-attribution img{display:none}
+  /* ヘッダーバーとの重なり回避：ズーム・レイヤ切替をヘッダー下に */
+  .leaflet-top{top:46px}
 
   /* パネル（下からスライド） */
   .panel{
@@ -164,7 +166,7 @@
 <body>
 
 <div class="topbar">
-  <h1>🏝 ビーチクリーンマップ <span style="font-size:10px;opacity:.7;font-weight:400">v1.6</span></h1>
+  <h1>🏝 ビーチクリーンマップ <span style="font-size:10px;opacity:.7;font-weight:400">v1.7</span></h1>
   <span class="sub" id="counter">沖縄</span>
 </div>
 
@@ -221,7 +223,7 @@
 const LS_NICK="bc_nick_v1", LS_KEY="bc_key_v1";
 
 /* ===== 接続設定：GASのデプロイURL ===== */
-const GAS_URL="https://script.google.com/macros/s/AKfycbynvalMo5iW68o4fjuDodmBnNjVDkcHFpUpUYHguw019icJ9NV6iknLwS869xSxW0Ch/exec";
+const GAS_URL="YOUR_GAS_URL_HERE";
 
 let beaches=[], events=[];
 let nick = localStorage.getItem(LS_NICK) || "";
