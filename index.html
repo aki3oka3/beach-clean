@@ -164,7 +164,7 @@
 <body>
 
 <div class="topbar">
-  <h1>🏝 ビーチクリーンマップ <span style="font-size:10px;opacity:.7;font-weight:400">v1.5</span></h1>
+  <h1>🏝 ビーチクリーンマップ <span style="font-size:10px;opacity:.7;font-weight:400">v1.6</span></h1>
   <span class="sub" id="counter">沖縄</span>
 </div>
 
@@ -321,7 +321,7 @@ function renderBeaches(){
 
 /* ===== パネル：海岸を開く ===== */
 function openBeach(b){
-  current=b; mode="browse"; clearTemp(); pendingSegs=[]; segDraft=null; hideHint();
+  current=b; mode="browse"; clearTemp(); pendingSegs=[]; segDraft=null; formDraft=null; hideHint();
   document.getElementById("p-name").textContent=b.name;
   const done=events.filter(e=>e.beachId===b.id && e.status==="done");
   const last=done.length?done.reduce((a,b)=>a.date>b.date?a:b).date:null;
@@ -405,11 +405,11 @@ function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;","
 
 /* ===== 記録フォーム ===== */
 let editingId=null, formStatus="done", convertFromId=null;
-function newRecord(status){ editingId=null; convertFromId=null; pendingSegs=[]; segDraft=null; formStatus=status; buildForm(status,null); }
-function editEvent(id){ const e=events.find(x=>x.id===id); if(!e)return; editingId=id; convertFromId=null; pendingSegs=(e.segs||[]).map(sg=>sg.map(p=>[...p])); segDraft=null; formStatus=e.status; drawPendingPreview(); buildForm(e.status,e); }
+function newRecord(status){ editingId=null; convertFromId=null; formDraft=null; pendingSegs=[]; segDraft=null; formStatus=status; buildForm(status,null); }
+function editEvent(id){ const e=events.find(x=>x.id===id); if(!e)return; editingId=id; convertFromId=null; formDraft=null; pendingSegs=(e.segs||[]).map(sg=>sg.map(p=>[...p])); segDraft=null; formStatus=e.status; drawPendingPreview(); buildForm(e.status,e); }
 function convertPlan(id){
   const p=events.find(x=>x.id===id); if(!p)return;
-  editingId=null; convertFromId=id; formStatus="done";
+  editingId=null; convertFromId=id; formDraft=null; formStatus="done";
   pendingSegs=(p.segs||[]).map(sg=>sg.map(pt=>[...pt])); segDraft=null;
   drawPendingPreview();
   buildForm("done",{date:todayStr(), area:p.area, org:p.org, notes:p.notes});
@@ -544,7 +544,38 @@ function val(id){const e=document.getElementById(id);return e?e.value.trim():""}
 function numVal(id){const e=document.getElementById(id);return e&&e.value?Number(e.value):null}
 
 /* ===== 区間の線描画 ===== */
+let formDraft=null; // 描画中のフォーム入力退避
+function captureForm(){
+  const g=id=>{const el=document.getElementById(id);return el?el.value:null};
+  return {
+    date:g("f-date"), area:g("f-area"), org:g("f-org"),
+    people:g("f-people"), bags:g("f-bags"), tide:g("f-tide"),
+    notes:g("f-notes"), nick:g("f-nick"), key:g("f-key"),
+    trash:[...document.querySelectorAll("#f-trash label.on")].map(l=>l.dataset.t),
+    danger:!!document.querySelector('#f-flags label[data-f="danger"].on'),
+    car:!!document.querySelector('#f-flags label[data-f="car"].on')
+  };
+}
+function applyDraft(d){
+  if(!d) return;
+  const st=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null)el.value=v};
+  st("f-date",d.date);st("f-area",d.area);st("f-org",d.org);
+  st("f-people",d.people);st("f-bags",d.bags);st("f-tide",d.tide);
+  st("f-notes",d.notes);st("f-nick",d.nick);st("f-key",d.key);
+  document.querySelectorAll("#f-trash label").forEach(l=>{
+    const on=d.trash.includes(l.dataset.t);
+    l.classList.toggle("on",on);
+    const inp=l.querySelector("input"); if(inp)inp.checked=on;
+  });
+  [["danger",d.danger],["car",d.car]].forEach(([f,on])=>{
+    const el=document.querySelector(`#f-flags label[data-f="${f}"]`);
+    if(el){el.classList.toggle("on",on);const inp=el.querySelector("input");if(inp)inp.checked=on;}
+  });
+  const dEl=document.getElementById("f-date");
+  if(dEl) dEl.dispatchEvent(new Event("change")); // 曜日表示を更新
+}
 function startDrawSegs(){
+  formDraft=captureForm(); // 入力途中の値を退避
   mode="drawSeg"; segDraft=null;
   document.getElementById("panel").classList.remove("open");
   drawPendingPreview();
@@ -571,6 +602,8 @@ function finishDraw(){
   hideHint();
   document.getElementById("panel").classList.add("open");
   buildForm(formStatus, editingId?events.find(x=>x.id===editingId):null);
+  applyDraft(formDraft); // 入力途中の値を復元
+  formDraft=null;
 }
 function undoSeg(){
   pendingSegs.pop(); drawPendingPreview(); drawHint();
@@ -615,6 +648,7 @@ function delEvent(id){
 
 /* ===== 海岸の追加・名称変更・削除 ===== */
 document.getElementById("fab-add").addEventListener("click",()=>{
+  if(mode==="drawSeg"){ toast("区間の描画中です（✔完了か×で終了）"); return; }
   mode="addBeach"; document.getElementById("panel").classList.remove("open");
   showHint('追加したい海岸の位置を<b>地図でタップ</b>');
 });
