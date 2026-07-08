@@ -4,12 +4,19 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>ビーチクリーンマップ｜沖縄</title>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-NZPRXXGC2Z"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-NZPRXXGC2Z');
+</script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
   :root{
-    --ocean:#0c7a8c;        /* メイン：海のティール */
-    --ocean-deep:#085463;
+    --ocean:#0e86b8;        /* メイン：海の青 */
+    --ocean-deep:#085f86;
     --sand:#e8dcc0;
     --coral:#e8694a;
     --ink:#143038;
@@ -35,6 +42,8 @@
   }
   .topbar h1{font-size:16px;margin:0;font-weight:700;letter-spacing:.02em}
   .topbar .sub{font-size:11px;opacity:.85;margin-left:auto;white-space:nowrap}
+  #help-btn{flex-shrink:0;width:26px;height:26px;border-radius:50%;border:1.5px solid rgba(255,255,255,.7);background:transparent;color:#fff;font-size:13px;font-weight:700;cursor:pointer;line-height:1;padding:0}
+  #help-btn:active{background:rgba(255,255,255,.2)}
 
   /* 凡例 */
   .legend{
@@ -78,6 +87,8 @@
   .subdot{width:11px;height:11px;border-radius:50%;background:var(--coral);border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)}
   .tempdot{width:18px;height:18px;border-radius:50%;background:rgba(232,105,74,.25);border:2px dashed var(--coral)}
   .loc-icon{width:16px;height:16px;border-radius:50%;background:#2b7be3;border:3px solid #fff;box-shadow:0 0 0 2px rgba(43,123,227,.4)}
+  .loc-pop .leaflet-popup-content{margin:6px 12px;font-size:13px;white-space:nowrap;min-width:0!important;width:auto!important}
+  .loc-pop .leaflet-popup-content-wrapper{border-radius:14px}
   .leaflet-control-attribution img{display:none}
   /* ヘッダーバーとの重なり回避：ズーム・レイヤ切替をヘッダー下に */
   .leaflet-top{top:46px}
@@ -154,6 +165,13 @@
   .modal .box{background:#fff;border-radius:16px;padding:22px;max-width:340px;width:100%;box-shadow:var(--shadow)}
   .modal h3{margin:0 0 6px;font-size:17px}
   .modal p{margin:0 0 14px;font-size:13px;color:#557}
+  #guide-modal{z-index:2100}
+  #guide-box{max-height:82vh;overflow-y:auto}
+  #guide-box h3{color:var(--ocean)}
+  .g-step{display:flex;gap:10px;margin-bottom:12px;align-items:flex-start}
+  .g-step .g-icon{flex-shrink:0;width:34px;height:34px;border-radius:10px;background:#e2f2f5;display:flex;align-items:center;justify-content:center;font-size:17px}
+  .g-step .g-text{font-size:13px;line-height:1.65;color:#333}
+  .g-step .g-text b{color:var(--ocean-deep)}
 
   .toast{
     position:fixed;left:50%;bottom:30px;transform:translateX(-50%) translateY(20px);z-index:3000;
@@ -166,8 +184,9 @@
 <body>
 
 <div class="topbar">
-  <h1>🏝 ビーチクリーンマップ <span style="font-size:10px;opacity:.7;font-weight:400">v1.8</span></h1>
+  <h1>🏝 ビーチクリーンマップ <span style="font-size:10px;opacity:.7;font-weight:400">v1.9</span></h1>
   <span class="sub" id="counter">沖縄</span>
+  <button id="help-btn" onclick="showGuide()" title="使い方">？</button>
 </div>
 
 <div class="legend" id="legend">
@@ -204,6 +223,39 @@
   <div class="panel-body" id="panelBody"><!-- 動的 --></div>
 </div>
 
+<!-- 使い方ガイド -->
+<div class="modal" id="guide-modal">
+  <div class="box" id="guide-box">
+    <h3>🏝 ビーチクリーンマップ の使い方</h3>
+    <p>海岸の清掃記録をみんなで残して、「次はどこをやるか」が見える地図です。</p>
+    <div class="g-step">
+      <div class="g-icon">👀</div>
+      <div class="g-text"><b>見る</b><br>ピンの色は最後の実施からの経過です。<span style="color:#2f9e44;font-weight:700">緑=3か月以内</span>、<span style="color:#b8860b;font-weight:700">黄=3〜6か月</span>、<span style="color:#c0392b;font-weight:700">赤=6か月超（次の候補）</span>、灰=未実施。色が濃い海岸ほど、そろそろやり時です。</div>
+    </div>
+    <div class="g-step">
+      <div class="g-icon">✏️</div>
+      <div class="g-text"><b>記録する（かんたん3ステップ）</b><br>① 海岸のピンをタップ<br>② 「記録を追加」を押す<br>③ 実施日・人数・ごみ袋数などを入れて保存<br>実施した区間を地図に線で描くこともできます。</div>
+    </div>
+    <div class="g-step">
+      <div class="g-icon">➕</div>
+      <div class="g-text"><b>海岸が地図にない時</b><br>右下の「＋」ボタンを押してから地図をタップすると、新しい海岸を追加できます。</div>
+    </div>
+    <div class="g-step">
+      <div class="g-icon">🔑</div>
+      <div class="g-text"><b>あいことば</b><br>記録を守る合言葉です。0000のままなら誰でも直せます。団体で記録を守りたいときだけ変えて、メンバーで共有してください。</div>
+    </div>
+    <div class="g-step">
+      <div class="g-icon">📍</div>
+      <div class="g-text"><b>現在地</b><br>右下の📍ボタンで現在地に移動します。青い丸●が今いる場所です。</div>
+    </div>
+    <div class="g-step">
+      <div class="g-icon">😊</div>
+      <div class="g-text"><b>安心して使ってね</b><br>登録不要・無料。ニックネームひとつでOK、本名不要です。</div>
+    </div>
+    <div class="actrow"><button class="btn primary" id="guide-close" onclick="closeGuide()" style="width:100%">はじめる</button></div>
+  </div>
+</div>
+
 <!-- ニックネーム -->
 <div class="modal" id="nickModal">
   <div class="box">
@@ -213,6 +265,16 @@
     <input type="text" id="keyInput" value="0000" placeholder="あいことば" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:11px;font-size:15px;margin-top:10px">
     <p style="margin:8px 0 0;font-size:11px;color:#7a8a90">あいことば：0000のままなら誰でも記録を直せます。団体で記録を守りたいときだけ変えてください（メンバーで共有）。</p>
     <div class="actrow"><button class="btn primary" id="nickSave">はじめる</button></div>
+  </div>
+</div>
+
+<div class="modal" id="confirmModal">
+  <div class="box">
+    <p id="confirmMsg" style="margin:0 0 16px;font-size:14px;color:#333;line-height:1.6;white-space:pre-line"></p>
+    <div class="actrow" style="display:flex;gap:8px">
+      <button class="btn" id="confirmCancel" style="flex:1">キャンセル</button>
+      <button class="btn primary" id="confirmOk" style="flex:2;background:#c0392b;border-color:#c0392b">削除する</button>
+    </div>
   </div>
 </div>
 
@@ -272,16 +334,23 @@ function device(){const u=navigator.userAgent;if(/iPhone|iPad/.test(u))return"iP
 const map=L.map("map",{zoomControl:false}).setView([26.59,127.95],11);
 L.control.zoom({position:"topright"}).addTo(map);
 
-/* ベースレイヤ（他アプリと同構成：既定は航空写真） */
+/* ベースレイヤ（4アプリ共通構成） */
 const gsiPhoto=L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg",
-  {maxNativeZoom:18,maxZoom:19,attribution:"© 国土地理院"});
-const cartoLabels=L.tileLayer("https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png",
-  {maxZoom:19,attribution:"© CARTO"});
-const layerAerial=L.layerGroup([gsiPhoto,cartoLabels]);
+  {maxNativeZoom:18,maxZoom:20,attribution:"© 国土地理院"});
+const satLabels=L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png",
+  {maxZoom:20,subdomains:"abcd",attribution:"© CARTO"});
+const layerAerial=L.layerGroup([gsiPhoto,satLabels]);
+const cartoVoyager=L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+  {maxZoom:20,subdomains:"abcd",attribution:"© OpenStreetMap, © CARTO"});
+const cartoLight=L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+  {maxZoom:20,subdomains:"abcd",attribution:"© OpenStreetMap, © CARTO"});
 const layerOsm=L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-  {maxZoom:19,attribution:"© OpenStreetMap"});
-layerAerial.addTo(map);
-L.control.layers({"航空写真":layerAerial,"地図":layerOsm},null,{position:"topright"}).addTo(map);
+  {maxNativeZoom:19,maxZoom:20,attribution:"© OpenStreetMap"});
+const baseLayers={"航空写真＋地名":layerAerial,"Carto Voyager":cartoVoyager,"Carto 淡色":cartoLight,"OpenStreetMap":layerOsm};
+const savedLayer=localStorage.getItem("beach_baselayer");
+(baseLayers[savedLayer]||layerAerial).addTo(map);
+L.control.layers(baseLayers,null,{position:"topright",collapsed:true}).addTo(map);
+map.on("baselayerchange",e=>localStorage.setItem("beach_baselayer",e.name));
 
 let markers={};      // beachId -> marker
 let subLayer=L.layerGroup().addTo(map);  // 表示中の海岸の実施区間（線）
@@ -629,9 +698,9 @@ map.on("click",e=>{
     return;
   }
 });
-function delEvent(id){
+async function delEvent(id){
   const target=events.find(e=>e.id===id);
-  if(!confirm("この記録を削除しますか？")) return;
+  if(!(await askConfirm("この記録を削除しますか？"))) return;
   const run=(key)=>post({action:"deleteEvent", id, key}).then(j=>{
     if(j && !j.ok && j.error==="auth"){
       const k=prompt("あいことばが一致しません。この記録のあいことばを入力してください");
@@ -658,10 +727,10 @@ document.getElementById("p-rename").addEventListener("click",()=>{
   const n=prompt("海岸名を変更",current.name);
   if(n&&n.trim()){current.name=n.trim();post({action:"saveBeach",beach:current});openBeach(current);toast("変更しました")}
 });
-document.getElementById("p-delbeach").addEventListener("click",()=>{
+document.getElementById("p-delbeach").addEventListener("click",async()=>{
   const bid=current.id;
   const has=events.some(e=>e.beachId===bid);
-  if(!confirm(has?"この海岸と全ての記録を削除しますか？":"この海岸を削除しますか？"))return;
+  if(!(await askConfirm(has?"この海岸と全ての記録を削除しますか？":"この海岸を削除しますか？")))return;
   beaches=beaches.filter(b=>b.id!==bid);
   events=events.filter(e=>e.beachId!==bid);
   
@@ -680,9 +749,10 @@ function goLocate(){
   navigator.geolocation.getCurrentPosition(p=>{
     const ll=[p.coords.latitude,p.coords.longitude];
     if(locMarker)map.removeLayer(locMarker);
-    locMarker=L.marker(ll,{icon:L.divIcon({className:"",iconSize:[16,16],iconAnchor:[8,8],html:'<div class="loc-icon"></div>'})}).addTo(map);
-    map.setView(ll,13);
-  },()=>toast("現在地を取得できませんでした"),{enableHighAccuracy:true,timeout:8000});
+    locMarker=L.marker(ll,{icon:L.divIcon({className:"",iconSize:[16,16],iconAnchor:[8,8],html:'<div class="loc-icon"></div>'})}).addTo(map)
+      .bindPopup("🔵 現在地",{minWidth:0,closeButton:false,className:"loc-pop"}).openPopup();
+    map.setView(ll,16,{animate:true});
+  },()=>toast("現在地を取得できませんでした"));
 }
 document.getElementById("fab-locate").addEventListener("click",goLocate);
 
@@ -692,6 +762,14 @@ function showHint(h){const b=document.getElementById("hintbar");b.innerHTML=h;b.
 function hideHint(){document.getElementById("hintbar").classList.remove("show")}
 let toastT;
 function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove("show"),2000)}
+function askConfirm(msg){
+  return new Promise(resolve=>{
+    document.getElementById("confirmMsg").textContent=msg;
+    document.getElementById("confirmModal").classList.add("show");
+    document.getElementById("confirmOk").onclick=()=>{document.getElementById("confirmModal").classList.remove("show");resolve(true);};
+    document.getElementById("confirmCancel").onclick=()=>{document.getElementById("confirmModal").classList.remove("show");resolve(false);};
+  });
+}
 
 document.getElementById("legendToggle").addEventListener("click",()=>{
   const l=document.getElementById("legend");const hidden=l.dataset.hidden==="1";
@@ -699,16 +777,30 @@ document.getElementById("legendToggle").addEventListener("click",()=>{
   document.getElementById("legendToggle").textContent=hidden?"隠す":"凡例";l.dataset.hidden=hidden?"0":"1";
 });
 
-/* ===== 起動 ===== */
+/* ===== 使い方ガイド ===== */
+function showGuide(){document.getElementById("guide-modal").classList.add("show");}
+function closeGuide(){
+  document.getElementById("guide-modal").classList.remove("show");
+  try{localStorage.setItem("beach_guide_seen","1");}catch(e){}
+  if(!nick)document.getElementById("nickModal").classList.add("show");
+}
+
+/* ===== 起動（初回：ガイド → はじめる → ニックネーム → 地図）===== */
 function init(){
-  if(!nick){ document.getElementById("nickModal").classList.add("show"); }
+  let gs="";try{gs=localStorage.getItem("beach_guide_seen");}catch(e){}
+  if(!gs){
+    showGuide();
+  } else if(!nick){
+    document.getElementById("nickModal").classList.add("show");
+  }
   document.getElementById("counter").textContent="読み込み中…";
   loadData();
   goLocate();
 }
 document.getElementById("nickSave").addEventListener("click",()=>{
   const v=document.getElementById("nickInput").value.trim();
-  if(v){nick=v;localStorage.setItem(LS_NICK,nick);}
+  if(!v){toast("ニックネームを入力してください");return;}
+  nick=v;localStorage.setItem(LS_NICK,nick);
   const k=document.getElementById("keyInput").value.trim();
   myKey=k||"0000"; localStorage.setItem(LS_KEY,myKey);
   document.getElementById("nickModal").classList.remove("show");
