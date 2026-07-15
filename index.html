@@ -31,7 +31,7 @@
     --shadow:0 6px 24px rgba(8,40,48,.18);
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{margin:0;height:100%;font-family:"Hiragino Kaku Gothic ProN","Meiryo",system-ui,sans-serif;color:var(--ink);background:#eef4f4}
+  html,body{margin:0;height:100%;overflow:hidden;font-family:"Hiragino Kaku Gothic ProN","Meiryo",system-ui,sans-serif;color:var(--ink);background:#eef4f4}
   #map{position:absolute;inset:0;z-index:1}
 
   /* ヘッダー */
@@ -46,9 +46,23 @@
   #help-btn{flex-shrink:0;width:26px;height:26px;border-radius:50%;border:1.5px solid rgba(255,255,255,.7);background:transparent;color:#fff;font-size:13px;font-weight:700;cursor:pointer;line-height:1;padding:0}
   #help-btn:active{background:rgba(255,255,255,.2)}
 
+  /* 検索バー */
+  #search-bar{position:absolute;top:52px;left:10px;right:10px;z-index:960}
+  #beach-search{width:100%;padding:10px 38px 10px 14px;border:1px solid var(--line);border-radius:12px;font-size:14px;font-family:inherit;box-shadow:var(--shadow);background:rgba(255,255,255,.96)}
+  #beach-search:focus{outline:none;border-color:var(--ocean)}
+  #search-clear{display:none;position:absolute;right:8px;top:19px;transform:translateY(-50%);width:24px;height:24px;border:none;border-radius:50%;background:#ddd;color:#666;font-size:12px;cursor:pointer;line-height:1;padding:0}
+  #search-clear:active{background:#ccc}
+  #search-results{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);max-height:280px;overflow-y:auto}
+  .sr-item{padding:10px 12px;font-size:13px;border-bottom:1px solid #eef4f4;cursor:pointer;display:flex;align-items:center;gap:8px}
+  .sr-item:last-child{border-bottom:none}
+  .sr-item:active{background:#f4f8f8}
+  .sr-name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+  .sr-info{font-size:11px;color:#7a8a90;flex-shrink:0;white-space:nowrap}
+  .sr-none{padding:12px;font-size:12px;color:#999;text-align:center}
+
   /* 凡例 */
   .legend{
-    position:absolute;top:52px;left:10px;z-index:900;
+    position:absolute;top:104px;left:10px;z-index:900;
     background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:12px;
     padding:8px 10px;font-size:11px;line-height:1.7;box-shadow:var(--shadow);max-width:182px
   }
@@ -91,8 +105,8 @@
   .loc-pop .leaflet-popup-content{margin:6px 12px;font-size:13px;white-space:nowrap;min-width:0!important;width:auto!important}
   .loc-pop .leaflet-popup-content-wrapper{border-radius:14px}
   .leaflet-control-attribution img{display:none}
-  /* ヘッダーバーとの重なり回避：ズーム・レイヤ切替をヘッダー下に */
-  .leaflet-top{top:46px}
+  /* ヘッダーバー・検索バーとの重なり回避：ズーム・レイヤ切替をその下に */
+  .leaflet-top{top:98px}
 
   /* パネル（下からスライド） */
   .panel{
@@ -185,9 +199,15 @@
 <body>
 
 <div class="topbar">
-  <h1>🏝 ビーチクリーンマップ <span style="font-size:10px;opacity:.7;font-weight:400">v1.9</span></h1>
+  <h1>🏝 ビーチクリーンマップ <span style="font-size:10px;opacity:.7;font-weight:400">v2.1</span></h1>
   <span class="sub" id="counter">沖縄</span>
   <button id="help-btn" onclick="showGuide()" title="使い方">？</button>
+</div>
+
+<div id="search-bar">
+  <input type="text" id="beach-search" placeholder="🔍 海岸名で検索（例：21世紀、ウッパマ）" autocomplete="off">
+  <button id="search-clear" onclick="clearSearch()" title="クリア">✕</button>
+  <div id="search-results"></div>
 </div>
 
 <div class="legend" id="legend">
@@ -232,6 +252,10 @@
     <div class="g-step">
       <div class="g-icon">👀</div>
       <div class="g-text"><b>見る</b><br>ピンの色は最後の実施からの経過です。<span style="color:#2f9e44;font-weight:700">緑=3か月以内</span>、<span style="color:#b8860b;font-weight:700">黄=3〜6か月</span>、<span style="color:#c0392b;font-weight:700">赤=6か月超（次の候補）</span>、灰=未実施。色が濃い海岸ほど、そろそろやり時です。</div>
+    </div>
+    <div class="g-step">
+      <div class="g-icon">🔍</div>
+      <div class="g-text"><b>探す</b><br>地図の上の検索バーで、海岸名から探せます。結果をタップすると地図がその海岸に移動します。</div>
     </div>
     <div class="g-step">
       <div class="g-icon">✏️</div>
@@ -325,7 +349,17 @@ function normEvent(e){
   e.danger = e.danger===true||e.danger==="TRUE"||e.danger==="true";
   e.car = e.car===true||e.car==="TRUE"||e.car==="true";
   e.locked = e.locked===true||e.locked==="TRUE"||e.locked==="true";
+  e.date = normDate(e.date);
   return e;
+}
+/* 日付をyyyy-mm-ddに揃える（シート手修正などで形式が崩れた記録への防御） */
+function normDate(v){
+  const str=String(v||"").trim();
+  if(!str) return "";
+  if(/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  const d=new Date(str);
+  if(isNaN(d)) return "";
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
 }
 function uid(){return "e"+Date.now()+Math.floor(Math.random()*1000)}
 function todayStr(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
@@ -418,7 +452,13 @@ function drawMarks(beachId){
     }
   });
 }
-function fmtDate(s){const d=new Date(s+"T12:00");const w="日月火水木金土"[d.getDay()];return `${d.getMonth()+1}/${d.getDate()}(${w})`}
+function fmtDate(s){
+  if(!s) return "日付不明";
+  const d=new Date(s+"T12:00");
+  if(isNaN(d)) return "日付不明";
+  const w="日月火水木金土"[d.getDay()];
+  return `${d.getMonth()+1}/${d.getDate()}(${w})`;
+}
 
 function renderHistory(beachId){
   const body=document.getElementById("panelBody");
@@ -743,6 +783,69 @@ document.getElementById("p-delbeach").addEventListener("click",async()=>{
 document.getElementById("panelClose").addEventListener("click",()=>{
   document.getElementById("panel").classList.remove("open");subLayer.clearLayers();clearTemp();mode="browse";hideHint();
 });
+
+/* ===== 海岸名検索（ガソリン価格ナビと同仕様） ===== */
+function normSearch(s){
+  return String(s||"").toLowerCase()
+    .replace(/[Ａ-Ｚａ-ｚ０-９]/g,ch=>String.fromCharCode(ch.charCodeAt(0)-0xFEE0))
+    .replace(/[ァ-ヶ]/g,ch=>String.fromCharCode(ch.charCodeAt(0)-0x60))
+    .replace(/[\s　]/g,"");
+}
+function searchBeaches(qRaw){
+  const q=normSearch(qRaw);
+  if(!q)return[];
+  const out=[];
+  for(const b of beaches){
+    if(out.length>=12)break;
+    if(normSearch(b.name).indexOf(q)>=0){out.push(b);}
+  }
+  return out;
+}
+function hideSearchResults(){document.getElementById("search-results").style.display="none";}
+function clearSearch(){
+  const si=document.getElementById("beach-search");
+  si.value="";
+  document.getElementById("search-clear").style.display="none";
+  hideSearchResults();
+  si.focus();
+}
+function renderSearchResults(list,qRaw){
+  const box=document.getElementById("search-results");
+  if(!qRaw){box.style.display="none";return;}
+  if(!list.length){
+    box.innerHTML='<div class="sr-none">見つかりませんでした</div>';
+    box.style.display="block";return;
+  }
+  box.innerHTML="";
+  list.forEach(b=>{
+    const r=recencyColor(b.id);
+    const el=document.createElement("div");
+    el.className="sr-item";
+    el.innerHTML='<span class="dot" style="background:'+r.c+'"></span>'+
+      '<span class="sr-name">'+esc(b.name)+'</span>'+
+      '<span class="sr-info">'+r.label+'</span>';
+    el.onclick=()=>{
+      hideSearchResults();
+      document.getElementById("beach-search").blur();
+      map.setView([b.lat,b.lng],15,{animate:true});
+      openBeach(b);
+    };
+    box.appendChild(el);
+  });
+  box.style.display="block";
+}
+(function(){
+  const si=document.getElementById("beach-search");
+  let t=null;
+  si.addEventListener("input",()=>{
+    document.getElementById("search-clear").style.display=si.value?"block":"none";
+    clearTimeout(t);
+    t=setTimeout(()=>renderSearchResults(searchBeaches(si.value),si.value.trim()),200);
+  });
+  document.addEventListener("click",e=>{
+    if(!document.getElementById("search-bar").contains(e.target))hideSearchResults();
+  });
+})();
 
 /* ===== 現在地 ===== */
 function goLocate(){
